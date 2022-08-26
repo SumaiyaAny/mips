@@ -1,1 +1,90 @@
+/*
+ * PC.cpp
+ *
+ * Created: 8/25/2022 7:27:23 PM
+ * Author : User
+ */ 
+
+#define F_CPU 1000000UL
+#include <avr/io.h>
+#include <util/delay.h>
+
+int8_t current_pc;
+int8_t updated_pc;
+int8_t jump_address;
+int8_t branch_offset;
+uint8_t mux_control;
+
+#define JUMP_SIGNAL_	0x01	//0th bit of PINC
+#define ALU_ZERO_		0x02	//1st
+#define BNEQ_SIGNAL_	0x04	//2nd
+#define BEQ_SIGNAL_		0x08	//3rd
+
+bool branch = false;
+/*
+										-U-
+jump address 0				|	1				40	|	pc0	in
+jump address 1				|	2				39	|	pc1
+jump address 2				|	3				38	|	pc2
+jump address 3				|	4				37	|	pc3			
+jump address 4				|	5				36	|	pc4			
+jump address 5				|	6	B		A	35	|	pc5			
+jump address 6				|	7				34	|	pc6			
+jump address 7				|	8				33	|	pc7			
+		!reset				|	9				32	|		AREF		
+		VCC					|	10				31	|		GND		
+		GND					|	11				30	|		AVCC		
+							|	12			C7	29	|		branch offset 3
+							|	13				28	|		branch offset 2
+		PC out0				|	14	D0			27	|		branch offset 1
+		PC out1				|	15			c4	26	|		branch offset 0
+		PC out2				|	16			c3	25	|		beq control signal
+		PC out3				|	17			c2	24	|		bneq control signal
+		PC out4				|	18			c1	23	|		ALU 0 output
+		PC out5				|	19			C0	22	|		jump control signal
+		PC out6				|	20			D7	21	|		PC out7		
+*/
+
+int main(void)
+{
+    // Some pins of PORTC can not be used for I/O directly.
+    // turn of JTAG to use them
+    // or write a 1 to the JTD bit twice consecutively to turn it off
+    MCUCSR = (1<<JTD);  MCUCSR = (1<<JTD);
+	
+	DDRA = 0x00; //8 bit current pc input
+	DDRB = 0x00; //8 bit jump address input
+	DDRC = 0x00; //C[4-7] = 4 bit branch offset, C[0] = jump control signal, C[1] = ALU zero output , C[2] = bneq control signal , C[3] = beq control signal 
+	DDRD = 0xFF; //updated pc output hobe
+	
+    while (1) 
+    {
+		current_pc = PINA;
+		jump_address = PINB;
+		branch_offset = (PINC & 0xFF); //4bit from MSB is branch offset & 4 bit from lSB is control
+		mux_control = branch_offset & 0x0F; //4 bit from lSB is control
+		
+		//pc+1
+		updated_pc = current_pc + 1;
+		
+		//taking branch offset from MSB to LSB && sign extending it
+		if(branch_offset & 0x80) branch_offset = branch_offset >>4 | (0b11110000); //-ve sign extension
+		else branch_offset = branch_offset >>4;
+		
+		//if((beq && zero)||(bneq&& !zero)) then add branch_offset to pc+1;
+		if(((mux_control & BEQ_SIGNAL_ ) && (mux_control & ALU_ZERO_))||((mux_control & BNEQ_SIGNAL_)&&(mux_control & !ALU_ZERO_))) {
+			updated_pc += branch_offset;
+		}
+		
+		//if(jump_signal) then updated_pc = branch_address
+		if(mux_control & JUMP_SIGNAL_) updated_pc = jump_address;
+		
+		//writing updated pc to port D
+		PORTD = updated_pc;
+		
+		//delay
+		_delay_ms(50);
+    }
+}
+
 
