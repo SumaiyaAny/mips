@@ -1,0 +1,102 @@
+/*
+ * Register File.cpp
+ *
+ * Created: 8/27/2022 3:31:37 PM
+ * Author : Sumaiya Sultana
+ */ 
+
+/*
+this is prolly working.
+shomossha thakle age bhage output diye dewar shomoshsha thakbe. otherwise none.
+			
+*/
+/*
+										-U-
+src_reg_1 0					|	1				40	|	
+src_reg_1 1					|	2				39	|	
+src_reg_1 2					|	3				38	|	
+src_reg_1 3					|	4	B3			37	|			
+src_reg_2 0					|	5	B4		A4	36	|	write data 0			
+src_reg_2 1					|	6	B		A	35	|	write data 1			
+src_reg_2 2					|	7				34	|	write data 2			
+src_reg_2 3					|	8				33	|	write data 3		
+		!reset				|	9				32	|		AREF		
+		VCC					|	10				31	|		GND		
+		GND					|	11				30	|		AVCC		
+							|	12			C7	29	|	read data_2 3	
+							|	13				28	|	read data_2 2	
+	reset signal			|	14	D0			27	|	read data_2 1	
+	write signal			|	15			c4	26	|	read data_2 0	(LSB)
+	clk_intrpt				|	16	D2		c3	25	|	read data_1 3	
+	dest_reg 0				|	17	D3		c2	24	|	read data_1 2
+	dest_reg 1				|	18			c1	23	|	read data_1 1	
+	dest_reg 2				|	19			C0	22	|	read data_1 0 (LSB)
+	dest_reg 3				|	20			D7	21	|		
+*/
+#define F_CPU 1000000UL
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+uint8_t registers[6] = {0,0,0,0,0,0};
+uint8_t write = 0;	
+uint8_t destination = 0;
+uint8_t source1 = 0;
+uint8_t source2 = 0;
+uint8_t writeData = 0;
+
+ISR(INT0_vect)
+{
+	if(write == 1 && destination != 0){
+		registers[destination] = writeData;
+	}
+	_delay_ms(50);
+	
+}
+
+
+int main(void)
+{
+    /* Replace with your application code */
+	MCUCSR |= (1<<JTD);
+	MCUCSR |= (1<<JTD);
+	
+	DDRB = 0x00;					//B[7654] = source 2, B[3210] = source 1
+	DDRA = 0xF0;					//A[7654] = write data
+	DDRD = 0b10000000;				//D[6543] = destination, D[2] = clock int0, D[1] write control , D[0] reset
+		//   NddddCWreset				N = not used, D = dest,  W = write
+	DDRC = 0xFF;					//C[7654] = reg[source2], C[3210] = reg[source] 
+	
+	GICR = 1<<INT0;		/* Enable INT0*/
+	MCUCR = 1<<ISC01;   /* Trigger INT0 on falling edge */
+	//MCUCR &= (~(1<<ISC00));
+	sei();
+    while (1)
+    {
+		//source
+		uint8_t source = PINB;
+		source1 = source & 0x0F; //the lower bits  
+		source2 = (source & 0xF0) >> 4;   //the higher bits
+		
+		//destination
+		uint8_t D = PIND;
+		destination = (D & 0b01111000) >> 3;   //  PIND = NddddCWreset, d is the destination
+		if(D & 0x01) {
+			for (uint8_t i=0; i<6; i++) registers[i] = 0;
+			_delay_ms(100);
+			continue;
+		}
+		write = (D & (1<<1)) >> 1;
+		
+		
+		//write data
+		uint8_t A = PINA;
+		writeData = (A & 0xF0)>>4;
+		
+		
+		PORTC = (registers[source1] & 0x0F) | (registers[source2] << 4);
+		_delay_ms(50);
+		
+    }
+}
+
