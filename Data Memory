@@ -1,0 +1,99 @@
+/*
+ * data memory.cpp
+ *
+ * Created: 8/27/2022 10:30:16 AM
+ * Author : Sumaiya Sultana
+ */ 
+
+#define F_CPU 1000000UL
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+#define CLK_		0x04
+#define RESET_		0x08
+#define MEM_READ_	0x02
+#define MEM_WRITE_	0x01
+
+uint8_t MEMORY[1<<4];
+uint8_t destination;
+uint8_t writeData;
+uint8_t data_out;
+uint8_t signal;
+
+void memory_reset() {
+	for (int i=0; i<16; i++)
+	MEMORY[i] = 0;
+}
+
+ISR(INT0_vect)
+{
+	if(signal & MEM_WRITE_){
+		MEMORY[destination] = writeData;
+	}
+	_delay_ms(50);
+}
+
+/*
+										-U-
+	mem addrs 0			|	1			A0	40	|	Memory Write Signal
+	mem addrs 1			|	2				39	|	Memory Read Signal
+	mem addrs 2			|	3				38	|	Clock Signal //this pin may remain unused, give clk connection in D2
+	mem addrs 3			|	4				37	|	Reset Signal	
+write data 4			|	5				36	|				
+write data 5			|	6	B		A	35	|				
+write data 6			|	7				34	|				
+write data 7			|	8				33	|			
+		!reset			|	9				32	|		AREF		
+				VCC		|	10				31	|		GND		
+				GND		|	11				30	|		AVCC		
+						|	12			C7	29	|		
+						|	13				28	|		
+						|	14	D0			27	|		
+						|	15				26	|		
+					CLK	|	16	D2			25	|		data out 3
+						|	17				24	|		data out 2
+						|	18				23	|		data out 1
+						|	19			C0	22	|		data out 0
+						|	20			D7	21	|				
+*/
+
+
+int main(void)
+{
+	// Some pins of PORTC can not be used for I/O directly.
+	// turn of JTAG to use them
+	// o write a 1 to the JTD bit twice consecutively to turn it off
+	MCUCSR = (1<<JTD);  MCUCSR = (1<<JTD);
+	
+	DDRA = 0xF0;	// A[0] - Memory Write | A[1] - Memory Read | A[2] - Clock | A[3] - Reset
+	PORTA = 0X04;	//to set clock high
+	DDRB = 0x00;	// Address B[3:0] | Write Data B[7:4]
+	
+	DDRC = 0xFF;	// C[3:0] - Data Read
+	
+	GICR = 1<<INT0;		/* Enable INT0*/
+	MCUCR = 1<<ISC01;   /* Trigger INT0 on falling edge */
+	MCUCR &= (~(1<<ISC00));
+	
+	memory_reset();
+	sei();
+	while (1)
+	{
+		destination = PINB; //addrss in lsb, write data in msb
+		writeData = (destination & 0xF0)>>4;
+		destination &= 0x0F;
+		signal = PINA;
+		signal &= 0x0F;
+		if (signal & RESET_) {
+			memory_reset();
+			_delay_ms(100);
+		}
+		if (signal & MEM_READ_) {
+			PORTC = MEMORY[destination];
+			_delay_ms(50);
+		}
+	}
+	
+}
+
