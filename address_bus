@@ -2,7 +2,7 @@
  * PC.cpp
  *
  * Created: 8/25/2022 7:27:23 PM
- * Author : User
+ * Author : Sumaiya Sultana
  */ 
 
 #define F_CPU 1000000UL
@@ -72,9 +72,17 @@ int main(void)
 		else branch_offset = branch_offset >>4;
 		
 		//if((beq && zero)||(bneq&& !zero)) then add branch_offset to pc+1;
-		if(((mux_control & BEQ_SIGNAL_ ) && (mux_control & ALU_ZERO_))||((mux_control & BNEQ_SIGNAL_)&&(mux_control & !ALU_ZERO_))) {
+		/*if(((mux_control & BEQ_SIGNAL_ ) && (mux_control & ALU_ZERO_))||((mux_control & BNEQ_SIGNAL_)&&(mux_control & !ALU_ZERO_))) {
+			updated_pc += branch_offset;
+		}*/
+		
+		uint8_t res = (mux_control>>PINC3) & (mux_control>>PINC1);
+		res |= (mux_control>>PINC2) & (~(mux_control>>PINC1));
+		res &= 0x01;
+		if(res == 0x01){
 			updated_pc += branch_offset;
 		}
+		
 		
 		//if(jump_signal) then updated_pc = branch_address
 		if(mux_control & JUMP_SIGNAL_) updated_pc = jump_address;
@@ -86,5 +94,3 @@ int main(void)
 		_delay_ms(50);
     }
 }
-
-
