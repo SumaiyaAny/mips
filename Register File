@@ -12,14 +12,14 @@ shomossha thakle age bhage output diye dewar shomoshsha thakbe. otherwise none.
 */
 /*
 										-U-
-src_reg_1 0					|	1				40	|	
-src_reg_1 1					|	2				39	|	
-src_reg_1 2					|	3				38	|	
-src_reg_1 3					|	4	B3			37	|			
+src_reg_1 0					|	1			A0	40	|	$tx 0
+src_reg_1 1					|	2			A1	39	|	$tx 1
+src_reg_1 2					|	3			A2	38	|	$tx 2
+selection 0	//				|	4	B3		A3	37	|	$tx 3		
 src_reg_2 0					|	5	B4		A4	36	|	write data 0			
-src_reg_2 1					|	6	B		A	35	|	write data 1			
-src_reg_2 2					|	7				34	|	write data 2			
-src_reg_2 3					|	8				33	|	write data 3		
+src_reg_2 1					|	6	B5		A5	35	|	write data 1			
+src_reg_2 2					|	7	B6			34	|	write data 2			
+selection 1	//lagbe na		|	8	B7			33	|	write data 3		
 		!reset				|	9				32	|		AREF		
 		VCC					|	10				31	|		GND		
 		GND					|	11				30	|		AVCC		
@@ -31,14 +31,14 @@ src_reg_2 3					|	8				33	|	write data 3
 	dest_reg 0				|	17	D3		c2	24	|	read data_1 2
 	dest_reg 1				|	18			c1	23	|	read data_1 1	
 	dest_reg 2				|	19			C0	22	|	read data_1 0 (LSB)
-	dest_reg 3				|	20			D7	21	|		
+	selection 2//lagbe na	|	20	D6		D7	21	|		
 */
 #define F_CPU 1000000UL
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-uint8_t registers[6] = {0,0,0,0,0,0};
+uint8_t registers[8] = {0,1,2,3,4,5,0,0};
 uint8_t write = 0;	
 uint8_t destination = 0;
 uint8_t source1 = 0;
@@ -62,7 +62,7 @@ int main(void)
 	MCUCSR |= (1<<JTD);
 	
 	DDRB = 0x00;					//B[7654] = source 2, B[3210] = source 1
-	DDRA = 0xF0;					//A[7654] = write data
+	DDRA = 0x0F;					//A[7654] = write data
 	DDRD = 0b10000000;				//D[6543] = destination, D[2] = clock int0, D[1] write control , D[0] reset
 		//   NddddCWreset				N = not used, D = dest,  W = write
 	DDRC = 0xFF;					//C[7654] = reg[source2], C[3210] = reg[source] 
@@ -71,16 +71,24 @@ int main(void)
 	MCUCR = 1<<ISC01;   /* Trigger INT0 on falling edge */
 	//MCUCR &= (~(1<<ISC00));
 	sei();
+	uint8_t reg_select=0x00;
     while (1)
     {
 		//source
 		uint8_t source = PINB;
-		source1 = source & 0x0F; //the lower bits  
-		source2 = (source & 0xF0) >> 4;   //the higher bits
-		
+		source1 = source & 0x07; //the lower bits  
+		source2 = (source & 0x70) >> 4;   //the higher bits
+		reg_select=0x00;
+		reg_select |= (source & 0x08)>>3 | (source & 0x80)>>6;
 		//destination
 		uint8_t D = PIND;
-		destination = (D & 0b01111000) >> 3;   //  PIND = NddddCWreset, d is the destination
+		destination = (D & 0b00111000) >> 3;   //  PIND = NddddCWreset, d is the destination
+		reg_select |= (D & 0x40)>>4 ;
+		uint8_t temp = PINA;
+		temp>>=4;
+		temp<<=4;
+		temp|= (registers[reg_select]&0x0F);
+		PORTA = temp;
 		if(D & 0x01) {
 			for (uint8_t i=0; i<6; i++) registers[i] = 0;
 			_delay_ms(100);
@@ -99,4 +107,3 @@ int main(void)
 		
     }
 }
-
